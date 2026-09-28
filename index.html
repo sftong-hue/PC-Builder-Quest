@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>電腦裝機特工 - MS Paint 復古版 (大字體)</title>
+    <!-- Firebase SDK (Compat Version) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <style>
+        :root {
+            --win-gray: #c0c0c0;
+            --win-dark: #808080;
+            --win-darker: #404040;
+            --win-light: #ffffff;
+            --win-border-light: #dfdfdf;
+            --win-blue: #000080;
+            --canvas-bg: #4a6b5c;
+            --text-dark: #000000;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            font-family: "MS Sans Serif", "Microsoft Sans Serif", "Segoe UI", "Courier New", monospace, sans-serif;
+            image-rendering: pixelated;
+        }
+
+        body {
+            background-color: #557;
+            padding: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-size: 15px;
+        }
+
+        /* 經典 Windows 95 浮雕邊框系統 */
+        .outset-box {
+            border: 2px solid;
+            border-color: var(--win-light) var(--win-darker) var(--win-darker) var(--win-light);
+        }
+
+        .inset-box {
+            border: 2px solid;
+            border-color: var(--win-darker) var(--win-light) var(--win-light) var(--win-darker);
+        }
+
+        .groove-box {
+            border: 2px solid;
+            border-color: var(--win-dark) var(--win-light) var(--win-light) var(--win-dark);
+        }
+
+        /* 整個應用程式主視窗 */
+        .paint-window {
+            width: 1160px;
+            max-width: 100%;
+            height: 780px;
+            background-color: var(--win-gray);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 4px 4px 18px rgba(0,0,0,0.6);
+        }
+
+        /* 視窗頂部標題列 (改大字體) */
+        .win-titlebar {
+            background: linear-gradient(90deg, var(--win-blue), #1084d0);
+            color: #fff;
+            padding: 4px 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 15px;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+        }
+
+        .title-buttons {
+            display: flex;
+            gap: 3px;
+        }
+
+        .btn-win-ctrl {
+            width: 18px;
+            height: 16px;
+            background: var(--win-gray);
+            border: 1px solid;
+            border-color: var(--win-light) var(--win-darker) var(--win-darker) var(--win-light);
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #000;
+            line-height: 1;
+            font-weight: bold;
+        }
+
+        .btn-win-ctrl:active {
+            border-color: var(--win-darker) var(--win-light) var(--win-light) var(--win-darker);
+        }
+
+        /* 選單列 (File, Edit, View...) (改大字體) */
+        .win-menubar {
+            background-color: var(--win-gray);
+            padding: 4px 8px;
+            display: flex;
+            gap: 16px;
+            font-size: 14px;
+            font-weight: bold;
+            border-bottom: 1px solid var(--win-dark);
+        }
+
+        .menu-item {
+            cursor: pointer;
+            padding: 2px 6px;
+        }
+
+        .menu-item:hover {
+            background-color: var(--win-blue);
+            color: #fff;
+        }
+
+        .menu-item span {
+            text-decoration: underline;
+        }
+
+        /* 主工作區域：工具欄 + 畫布 + 右側功能板 */
+        .paint-workspace {
+            flex: 1;
+            display: flex;
+            background-color: var(--win-gray);
+            padding: 5px;
+            gap: 6px;
+            overflow: hidden;
+        }
+
+        /* 1. 左側：小畫家經典雙欄工具箱 */
+        .paint-toolbar {
+            width: 70px;
+            background: var(--win-gray);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 4px 2px;
+            gap: 6px;
+        }
+
+        .tool-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 28px);
+            grid-auto-rows: 28px;
+            gap: 3px;
+        }
+
+        .tool-btn {
+            width: 28px;
+            height: 28px;
+            background: var(--win-gray);
+            border: 1px solid;
+            border-color: var(--win-light) var(--win-darker) var(--win-darker) var(--win-light);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        .tool-btn.active, .tool-btn:active {
+            background: #e0e0e0;
+            border-color: var(--win-darker) var(--win-light) var(--win-light) var(--win-darker);
+        }
+
+        .tennis-icon-box {
+            margin-top: 10px;
+            width: 56px;
+            height: 56px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: var(--win-gray);
+            border: 2px solid;
+            border-color: var(--win-darker) var(--win-light) var(--win-light) var(--win-darker);
+            font-size: 28px;
+        }
+
+        /* 2. 中央：小畫家繪圖畫布 (遊戲核心畫面) */
+        .paint-canvas-wrapper {
+            flex: 1;
+            background: var(--win-dark);
+            padding: 3px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .canvas-inner {
+            flex: 1;
+            background: var(--canvas-bg);
+            position: relative;
+            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border: 2px solid;
+            border-color: var(--win-darker) #000 #000 var(--win-darker);
+            box-shadow: inset 1px 1px 0px #000;
+        }
+
+        /* 經典滾動條裝飾外框 */
+        .fake-h-scroll {
+            height: 20px;
+            background: var(--win-gray);
+            border-top: 1px solid var(--win-dark);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 4px;
+        }
+
+        .scroll-arrow {
+            width: 16px;
+            height: 16px;
+            background: var(--win-gray);
+            border: 1px solid;
+            border-color: var(--win-light) var(--win-darker) var(--win-darker) var(--win-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            cursor: pointer;
+        }
+
+        /* 像素風首頁遊戲歡迎畫面 (大字體優化) */
+        .pixel-screen {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: #fff;
+            padding: 20px;
+            position: absolute;
+            top: 0; left: 0;
+            background: radial-gradient(circle, #5b8772 0%, #344e43 100%);
+            z-index: 10;
+        }
+
+        .pixel-sparkle {
+            font-size: 24px;
+            color: #f7a81b;
+            position: absolute;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.3); opacity: 1; }
+        }
+
+        .pixel-title {
+            font-size: 54px;
+            font-weight: 900;
+            color: #ffffff;
+            letter-spacing: 5px;
+            text-shadow: 
+                3px 3px 0px #1a2a22,
+                -2px -2px 0px #1a2a22,
+                2px -2px 0px #1a2a22,
+                -2px 2px 0px #1a2a22,
+                5px 7px 0px rgba(0,0,0,0.6);
+            margin-bottom: 28px;
+            line-height: 1.2;
+        }
+
+        .pixel-btn-play {
+            background: #99b6a9;
+            border: 3px solid;
+            border-color: #e2f1e9 #1e3328 #1e3328 #e2f1e9;
+            color: #0b1d14;
+            font-size: 24px;
+            font-weight: bold;
+            padding: 10px 45px;
+            cursor: pointer;
+            letter-spacing: 3px;
+            text-shadow: 1px 1px 0px #e2f1e9;
+            box-shadow: 3px 3px 0px #000;
+        }
+
+        .pixel-btn-play:active {
+            border-color: #1e3328 #e2f1e9 #e2f1e9 #1e3328;
+            transform: translate(1px, 1px);
+        }
+
+        /* 遊戲裝機操作層 (字體加大) */
+        .game-layer {
+            width: 100%;
+            height: 100%;
+            padding: 12px;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            background: #395447;
+            overflow-y: auto;
+        }
+
+        .mission-strip {
+            background: var(--win-gray);
+            border: 2px solid;
+            border-color: var(--win-light) var(--win-darker) var(--win-darker) var(--win-light);
+            padding: 9px 14px;
+            font-size: 15px;
+            color: #000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .assembly-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .pixel-slot {
+            background: #24352d;
+            border: 2px solid;
+            border-color: #17221c #4b6a5a #4b6a5a #17221c;
+            padding: 10px 12px;
+            color: #fff;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 92px;
+        }
+
+        .slot-tag {
+            font-size: 14px;
+            color: #a8d5be;
+            font-weight: bold;
+        }
+
+        .slot-val {
+            font-size: 16px;
+            color: #ffff88;
+            margin: 5px 0;
+            font-weight: bold;
+        }
+
+        .slot-desc {
+            font-size: 13px;
+            color: #ccc;
+        }
+
+        .btn-pixel-del {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: #c00;
+            color: #fff;
+            border: 1px solid #fff;
+            font-size: 13px;
+            padding: 2px 7px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* 零件清單挑選區 (大字體清晰版) */
+        .parts-dock {
+            background: var(--win-gray);
+            border: 2px solid;
+            border-color: var(--win-light) var(--win-darker) var(--win-darker) var(--win-light);
+            padding: 8px;
+            max-height: 205px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .parts-tab-bar {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 7px;
+        }
+
+        .win-tab {
+            background: var(--win-gray);
+            border: 2px solid;
+            border-color: var(--win-light) var(--win-darker) var(--win-darker) var(--win-light);
+            padding: 4px 12px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .win-tab.active {
+            background: #fff;
+            border-bottom: none;
+        }
+
+        .parts-scroll-view {
+            background: #fff;
+            border: 2px solid;
+            border-color: var(--win-darker) var(--win-light) var(--win-light) var(--win-darker);
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 6px;
+        }
+
+        .part-item-retro {
+            background: #f0f0f0;
+            border: 1px solid #777;
+            padding: 6px 9px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .part-item-retro:hover {
+            background: var(--win-blue);
+            color: #fff;
+        }
+
+        .bottom-action-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--win-gray);
+            border: 2px solid;
+            border-color: var(--win-light) var(--win-darker) var(--win-darker) var(--win-light);
+            padding: 8px 14px;
+            font-size: 15px;
+        }
+
+        /* 3. 右側：三大圓形小人功能面板 (字體加大) */
+        .paint-sidebar-right {
+            width: 155px;
+            background: var(--win-gray);
+            border-left: 1px solid var(--win-dark);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 18px 8px;
+            gap: 24px;
+        }
+
+        .retro-avatar-action {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.1s;
+        }
+
+        .retro-avatar-action:hover {
+            filter: drop-shadow(0 0 5px rgba(0,0,0,0.4));
+        }
+
+        .retro-avatar-action:active {
+            transform: scale(0.96);
+        }
+
+        .avatar-pixel-icon {
+            width: 64px;
+            height: 64px;
+            background: #fff;
+            border: 2px solid #000;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 34px;
+            box-shadow: 2px 2px 0px #888;
+        }
+
+        .avatar-label {
+            margin-top: 8px;
+            font-size: 13px;
+            font-weight: 900;
+            letter-spacing: 0.5px;
+            color: #222;
+            text-align: center;
+        }
+
+        /* 彈窗樣式 (復古 Windows 對話框 - 大字體) */
+        .retro-modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.45);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+        }
+
+        .retro-dialog {
+            background: var(--win-gray);
+            border: 3px solid;
+            border-color: var(--win-light) var(--win-darker) var(--win-darker) var(--win-light);
+            width: 500px;
+            box-shadow: 5px 5px 14px rgba(0,0,0,0.55);
+            padding: 4px;
+        }
+
+        .dialog-content {
+            padding: 16px;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .btn-retro {
+            background: var(--win-gray);
+            border: 2px solid;
+            border-color: var(--win-light) var(--win-darker) var(--win-darker) var(--win-light);
+            padding: 6px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .btn-retro:active {
+            border-color: var(--win-darker) var(--win-light) var(--win-light) var(--win-darker);
+        }
+
+        .terminal-box {
+            background: #000;
+            color: #00ff00;
+            border: 2px solid;
+            border-color: var(--win-darker) var(--win-light) var(--win-light) var(--win-darker);
+            padding: 10px;
+            font-family: "Courier New", monospace;
+            font-size: 15px;
+            line-height: 1.4;
+            height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin: 12px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 主視窗容器 -->
+    <div class="paint-window outset-box">
+
+        <!-- 視窗標題列 -->
+        <div class="win-titlebar">
+            <div>🎨 game_night.bmp - Paint (裝機特工 98 - 大字版)</div>
+            <div class="title-buttons">
+                <button class="btn-win-ctrl">_</button>
+                <button class="btn-win-ctrl">□</button>
+                <button class="btn-win-ctrl" onclick="location.reload()">×</button>
+            </div>
+        </div>
+
+        <!-- 功能選單列 -->
+        <div class="win-menubar">
+            <div class="menu-item"><span>F</span>ile</div>
+            <div class="menu-item"><span>E</span>dit</div>
+            <div class="menu-item"><span>V</span>iew</div>
+            <div class="menu-item"><span>I</span>mage</div>
+            <div class="menu-item"><span>O</span>ptions</div>
+            <div class="menu-item" onclick="openModal('how')"><span>H</span>elp</div>
+        </div>
+
+        <!-- 主體工作台 -->
+        <div class="paint-workspace">
+
+            <!-- 1. 左側：經典雙欄工具箱 -->
+            <div class="paint-toolbar outset-box">
+                <div class="tool-grid">
+                    <button class="tool-btn" title="星形選擇">☆</button>
+                    <button class="tool-btn" title="矩形選取">⬚</button>
+                    <button class="tool-btn" title="橡皮擦">▱</button>
+                    <button class="tool-btn" title="油漆桶">🪣</button>
+                    <button class="tool-btn" title="滴管取色">💉</button>
+                    <button class="tool-btn" title="放大鏡">🔍</button>
+                    <button class="tool-btn active" title="鉛筆">✏️</button>
+                    <button class="tool-btn" title="筆刷">🖌️</button>
+                    <button class="tool-btn" title="噴槍">💨</button>
+                    <button class="tool-btn" title="文字輸入">A</button>
+                    <button class="tool-btn" title="直線">╱</button>
+                    <button class="tool-btn" title="曲線">〰</button>
+                    <button class="tool-btn" title="方形">▢</button>
+                    <button class="tool-btn" title="多邊形">⬢</button>
+                    <button class="tool-btn" title="橢圓">⬭</button>
+                    <button class="tool-btn" title="圓角矩形">▢</button>
+                </div>
+                <!-- 網球裝飾格 -->
+                <div class="tennis-icon-box" title="經典插圖">
+                    🎾
+                </div>
+            </div>
+
+            <!-- 2. 中央：小畫家畫布 (遊戲內容) -->
+            <div class="paint-canvas-wrapper inset-box">
+                <div class="canvas-inner" id="canvas-board">
+
+                    <!-- 像素首頁（還原圖片中的 GAME NIGHT PLAY 畫面） -->
+                    <div class="pixel-screen" id="home-screen">
+                        <span class="pixel-sparkle" style="top: 15%; left: 22%;">✦</span>
+                        <span class="pixel-sparkle" style="top: 25%; left: 18%;">✧</span>
+                        <span class="pixel-sparkle" style="top: 16%; right: 24%;">✦</span>
+                        <span class="pixel-sparkle" style="bottom: 35%; right: 20%;">✧</span>
+
+                        <div class="pixel-title">
+                            GAME<br>NIGHT
+                        </div>
+
+                        <button class="pixel-btn-play" onclick="promptLogin()">
+                            PLAY
+                        </button>
+
+                        <div style="margin-top: 22px; font-size: 15px; color: #bde0cd; text-shadow: 1px 1px 0 #000; font-weight: bold;">
+                            初中電腦科 (ICT) 硬體架構與組裝工作坊
+                        </div>
+                    </div>
+
+                    <!-- 裝機核心遊戲操作介面 -->
+                    <div class="game-layer" id="game-layer">
+
+                        <!-- 委託資訊條 -->
+                        <div class="mission-strip">
+                            <div>
+                                <b>【委託單 #<span id="mission-num">1</span>】</b> 
+                                <span id="client-title" style="color:#000080; font-weight:bold;">中一新生 小陳</span> - 
+                                <span id="client-desc">上網課與文書機，預算極吃緊！</span>
+                            </div>
+                            <div>
+                                💰 預算：<b id="m-budget" style="color: #b00; font-size: 16px;">$3000</b> | 
+                                ⚡ 目標跑分：<b id="m-target" style="font-size: 16px;">40</b>
+                            </div>
+                        </div>
+
+                        <!-- 裝機插槽 (CPU, 板, RAM, 顯卡, 儲存, 火牛) -->
+                        <div class="assembly-grid">
+                            <div class="pixel-slot" id="slot-cpu">
+                                <div class="slot-tag">中央處理器 (CPU)</div>
+                                <div class="slot-val">未安裝</div>
+                                <div class="slot-desc">支援 LGA1700 / AM5 腳位</div>
+                            </div>
+                            <div class="pixel-slot" id="slot-motherboard">
+                                <div class="slot-tag">主機板 (Motherboard)</div>
+                                <div class="slot-val">未安裝</div>
+                                <div class="slot-desc">配對 Socket 腳位與記憶體槽</div>
+                            </div>
+                            <div class="pixel-slot" id="slot-ram">
+                                <div class="slot-tag">主記憶體 (RAM)</div>
+                                <div class="slot-val">未安裝</div>
+                                <div class="slot-desc">DDR4 / DDR5 世代規格</div>
+                            </div>
+                            <div class="pixel-slot" id="slot-storage">
+                                <div class="slot-tag">儲存 (SSD / Storage)</div>
+                                <div class="slot-val">未安裝</div>
+                                <div class="slot-desc">NVMe M.2 高速系統碟</div>
+                            </div>
+                            <div class="pixel-slot" id="slot-gpu">
+                                <div class="slot-tag">顯示卡 (GPU / PCIe)</div>
+                                <div class="slot-val">未安裝 (可使用內顯)</div>
+                                <div class="slot-desc">PCIe x16 插槽</div>
+                            </div>
+                            <div class="pixel-slot" id="slot-psu">
+                                <div class="slot-tag">電源供應器 (PSU / 火牛)</div>
+                                <div class="slot-val">未安裝</div>
+                                <div class="slot-desc">額定瓦數必須足額</div>
+                            </div>
+                        </div>
+
+                        <!-- 零件挑選槽 -->
+                        <div class="parts-dock">
+                            <div class="parts-tab-bar">
+                                <button class="win-tab active" onclick="tabCategory('cpu')">CPU</button>
+                                <button class="win-tab" onclick="tabCategory('motherboard')">主機板</button>
+                                <button class="win-tab" onclick="tabCategory('ram')">RAM</button>
+                                <button class="win-tab" onclick="tabCategory('gpu')">顯卡</button>
+                                <button class="win-tab" onclick="tabCategory('storage')">SSD</button>
+                                <button class="win-tab" onclick="tabCategory('psu')">火牛</button>
+                            </div>
+                            <div class="parts-scroll-view" id="parts-shelf">
+                                <!-- 動態渲染可選零件 -->
+                            </div>
+                        </div>
+
+                        <!-- 底欄開機與即時統計 -->
+                        <div class="bottom-action-bar">
+                            <div>
+                                開支：<b id="calc-price" style="font-size:16px;">$0</b> / <span id="limit-price">$3000</span> | 
+                                供電：<b id="calc-power" style="font-size:16px;">0W</b> / <span id="limit-psu">0W</span>
+                            </div>
+                            <button class="btn-retro" style="background:#2f855a; color:#fff; font-size:15px;" onclick="triggerPOST()">
+                                ⚡ 通電開機驗證 (Power ON)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 模擬底欄水平滾動條 -->
+                <div class="fake-h-scroll">
+                    <button class="scroll-arrow">◀</button>
+                    <div style="flex:1; margin: 0 4px; height: 13px; background: #e0e0e0; border: 1px solid var(--win-dark);"></div>
+                    <button class="scroll-arrow">▶</button>
+                </div>
+            </div>
+
+            <!-- 3. 右側：圖片中的三大圓形小人功能面板 -->
+            <div class="paint-sidebar-right outset-box">
+                <!-- HOW TO PLAY -->
+                <div class="retro-avatar-action" onclick="openModal('how')">
+                    <div class="avatar-pixel-icon">💡</div>
+                    <div class="avatar-label">HOW TO PLAY</div>
+                </div>
+
+                <!-- RECORD -->
+                <div class="retro-avatar-action" onclick="openModal('record')">
+                    <div class="avatar-pixel-icon">💻</div>
+                    <div class="avatar-label">RECORD</div>
+                </div>
+
+                <!-- ANSWER (開機檢查 / 排行榜) -->
+                <div class="retro-avatar-action" onclick="openModal('rank')">
+                    <div class="avatar-pixel-icon">🎧</div>
+                    <div class="avatar-label">ANSWER</div>
+                </div>
+
+                <!-- 底部裝飾條 -->
+                <div style="margin-top:auto; font-size:12px; color:#555; text-align:center; font-weight:bold;">
+                    v1.98 Retro
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- 彈窗 1：學生身分登入 -->
+    <div class="retro-modal-overlay" id="modal-login">
+        <div class="retro-dialog">
+            <div class="win-titlebar">
+                <div>特工登入 - Login.exe</div>
+                <button class="btn-win-ctrl" onclick="closeModal('modal-login')">×</button>
+            </div>
+            <div class="dialog-content">
+                <p style="margin-bottom: 12px; font-weight: bold;">請輸入特工識別資訊以同步雲端排行：</p>
+                <div style="margin: 10px 0;">
+                    班別 (Class): <input type="text" id="ipt-class" placeholder="如 1A" style="width: 140px; padding: 4px; font-size: 15px;">
+                </div>
+                <div style="margin: 10px 0;">
+                    學號 (Class No): <input type="number" id="ipt-no" placeholder="如 08" style="width: 140px; padding: 4px; font-size: 15px;">
+                </div>
+                <div style="margin-top: 16px; text-align: right;">
+                    <button class="btn-retro" onclick="submitLogin()">確定進入遊戲</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 彈窗 2：HOW TO PLAY 說明 -->
+    <div class="retro-modal-overlay" id="modal-how">
+        <div class="retro-dialog">
+            <div class="win-titlebar">
+                <div>說明手冊 - Readme.txt</div>
+                <button class="btn-win-ctrl" onclick="closeModal('modal-how')">×</button>
+            </div>
+            <div class="dialog-content">
+                <p style="font-size: 16px;"><b>【電腦裝機特工 - 驗收指引】</b></p>
+                <ol style="margin-left: 22px; line-height: 1.7; margin-top: 8px;">
+                    <li><b>Socket 針腳</b>：Intel (LGA1700) 與 AMD (AM5) 必須與主機板匹配。</li>
+                    <li><b>記憶體代數</b>：DDR4 與 DDR5 物理防呆槽不同，主機板必須支援。</li>
+                    <li><b>供電安全</b>：全機功耗不可超出火牛額定瓦數，否則跳掣！</li>
+                    <li><b>預算控制</b>：不可超過客戶給予的採購上限。</li>
+                </ol>
+                <div style="margin-top: 16px; text-align: right;">
+                    <button class="btn-retro" onclick="closeModal('modal-how')">明白</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 彈窗 3：RECORD (當前配置與任務狀態) -->
+    <div class="retro-modal-overlay" id="modal-record">
+        <div class="retro-dialog">
+            <div class="win-titlebar">
+                <div>裝機日誌 - Record.log</div>
+                <button class="btn-win-ctrl" onclick="closeModal('modal-record')">×</button>
+            </div>
+            <div class="dialog-content">
+                <p>特工身份：<b id="rec-user">未登入</b></p>
+                <p>累積得分：<b id="rec-score" style="color: #b00; font-size: 16px;">0</b> 分</p>
+                <p>當前關卡：<b id="rec-stage">1 / 5</b></p>
+                <hr style="margin: 10px 0;">
+                <p><b>目前裝機清單：</b></p>
+                <div id="rec-list" style="margin-top: 8px; font-family: monospace; font-size: 14px; line-height: 1.6;"></div>
+                <div style="margin-top: 16px; text-align: right;">
+                    <button class="btn-retro" onclick="closeModal('modal-record')">關閉</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 彈窗 4：ANSWER / POST 開機自檢與排行榜 -->
+    <div class="retro-modal-overlay" id="modal-rank">
+        <div class="retro-dialog" style="width: 540px;">
+            <div class="win-titlebar">
+                <div>POST 開機診斷與全級榜 - Answer.exe</div>
+                <button class="btn-win-ctrl" onclick="closeModal('modal-rank')">×</button>
+            </div>
+            <div class="dialog-content">
+                <div class="terminal-box" id="post-term">>> 等待開機指令...</div>
+                <div id="post-next-btn-zone" style="display:none; margin-bottom: 12px;">
+                    <button class="btn-retro" style="background:#2b6cb0; color:#fff; width: 100%; padding: 8px;" onclick="nextMission()">
+                        交付客戶並進入下一關 ➔
+                    </button>
+                </div>
+                <p><b>🏆 全級裝機高手榜 (Top 5)</b></p>
+                <div id="board-entries" style="margin-top: 8px; font-family: monospace; font-size: 14px; line-height: 1.6;">
+                    載入中...
+                </div>
+                <div style="margin-top: 16px; text-align: right;">
+                    <button class="btn-retro" onclick="closeModal('modal-rank')">確定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* =========================================================================
+           1. Firebase 配置 (替換為學校專案金鑰，未設定則自動使用本機 LocalStorage)
+           ========================================================================= */
+        const firebaseConfig = {
+            apiKey: "AIzaSyB6DANsC8i_QX6NEfJQFdrOKS6hrh17hWw",
+                      authDomain: "ict-pc-builder-quest.firebaseapp.com",
+                      projectId: "ict-pc-builder-quest",
+                      storageBucket: "ict-pc-builder-quest.firebasestorage.app",
+                      messagingSenderId: "479368125159",
+                      appId: "1:479368125159:web:2b077f1dfa73678901e042",
+                      measurementId: "G-1YE99KDT8H"
+        };
+
+        let db = null;
+        let isFirebaseOn = false;
+        try {
+            if (firebaseConfig.apiKey && !firebaseConfig.apiKey.includes("YOUR_KEY")) {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                isFirebaseOn = true;
+            }
+        } catch(e) { console.warn("Firebase 未啟用，轉用 LocalStorage"); }
+
+        /* =========================================================================
+           2. 硬件零件數據庫
+           ========================================================================= */
+        const PARTS_DB = {
+            cpu: [
+                { id: "cpu_i3", name: "Intel i3-12100", price: 800, socket: "LGA1700", tdp: 65, igpu: true, perf: 45 },
+                { id: "cpu_i5", name: "Intel i5-13400F", price: 1500, socket: "LGA1700", tdp: 65, igpu: false, perf: 75 },
+                { id: "cpu_r5", name: "AMD Ryzen 5 7600", price: 1600, socket: "AM5", tdp: 65, igpu: true, perf: 80 },
+                { id: "cpu_r9", name: "AMD Ryzen 9 7900X", price: 3300, socket: "AM5", tdp: 170, igpu: true, perf: 105 }
+            ],
+            motherboard: [
+                { id: "mb_b660", name: "ASUS B660M (DDR4)", price: 650, socket: "LGA1700", ramType: "DDR4" },
+                { id: "mb_b760", name: "MSI B760 (DDR5)", price: 1100, socket: "LGA1700", ramType: "DDR5" },
+                { id: "mb_b650", name: "Gigabyte B650M (DDR5)", price: 1250, socket: "AM5", ramType: "DDR5" }
+            ],
+            ram: [
+                { id: "ram_8_d4", name: "Crucial 8GB DDR4", price: 150, type: "DDR4", cap: 8, perf: 20 },
+                { id: "ram_16_d4", name: "Kingston 16GB DDR4", price: 320, type: "DDR4", cap: 16, perf: 45 },
+                { id: "ram_16_d5", name: "Crucial 16GB DDR5", price: 480, type: "DDR5", cap: 16, perf: 60 },
+                { id: "ram_32_d5", name: "Corsair 32GB DDR5", price: 850, type: "DDR5", cap: 32, perf: 85 }
+            ],
+            gpu: [
+                { id: "gpu_none", name: "[不裝顯卡] 使用 CPU 內顯", price: 0, power: 0, perf: 10, isInternal: true },
+                { id: "gpu_1650", name: "GTX 1650 4GB", price: 1100, power: 75, perf: 35 },
+                { id: "gpu_4060", name: "RTX 4060 8GB", price: 2400, power: 115, perf: 75 },
+                { id: "gpu_4070", name: "RTX 4070 Ti 16GB", price: 6500, power: 285, perf: 120 }
+            ],
+            storage: [
+                { id: "ssd_500", name: "500GB NVMe SSD", price: 300, cap: 500, perf: 30 },
+                { id: "ssd_1t", name: "1TB NVMe SSD", price: 550, cap: 1000, perf: 60 },
+                { id: "ssd_2t", name: "2TB 高速 SSD", price: 1100, cap: 2000, perf: 95 }
+            ],
+            psu: [
+                { id: "psu_450", name: "450W 銅牌火牛", price: 300, wattage: 450 },
+                { id: "psu_650", name: "650W 金牌火牛", price: 620, wattage: 650 },
+                { id: "psu_850", name: "850W 金牌火牛", price: 950, wattage: 850 }
+            ]
+        };
+
+        const MISSIONS = [
+            {
+                name: "中一新生 小陳",
+                desc: "上網課與文書機，預算極吃緊，可善用 CPU 內顯！",
+                budget: 3000,
+                targetPerf: 40,
+                needGpu: false
+            },
+            {
+                name: "電競戰隊 阿豪",
+                desc: "順跑 Apex 與 Valorant，必須配備獨立顯示卡！",
+                budget: 6500,
+                targetPerf: 90,
+                needGpu: true
+            },
+            {
+                name: "設計系 詠思",
+                desc: "剪接 4K 影片與渲染，指定 1TB 以上 SSD 與大容量 RAM！",
+                budget: 11000,
+                targetPerf: 140,
+                needGpu: true,
+                minStorage: 1000,
+                minRam: 16
+            }
+        ];
+
+        /* =========================================================================
+           3. 遊戲狀態
+           ========================================================================= */
+        let studentClass = "";
+        let studentNo = "";
+        let currentStage = 0;
+        let userScore = 0;
+        let currentTab = "cpu";
+        let build = { cpu: null, motherboard: null, ram: null, gpu: null, storage: null, psu: null };
+
+        function promptLogin() {
+            document.getElementById("modal-login").style.display = "flex";
+        }
+
+        function submitLogin() {
+            const cls = document.getElementById("ipt-class").value.trim().toUpperCase();
+            const no = document.getElementById("ipt-no").value.trim();
+            if (!cls || !no) {
+                alert("請填寫班別與學號！");
+                return;
+            }
+            studentClass = cls;
+            studentNo = no.padStart(2, "0");
+            closeModal("modal-login");
+
+            document.getElementById("home-screen").style.display = "none";
+            document.getElementById("game-layer").style.display = "flex";
+
+            loadMission(0);
+            tabCategory("cpu");
+        }
+
+        function loadMission(idx) {
+            currentStage = idx;
+            build = { cpu: null, motherboard: null, ram: null, gpu: null, storage: null, psu: null };
+            updateSlotView();
+            updateBudgetUI();
+
+            const m = MISSIONS[idx];
+            document.getElementById("mission-num").innerText = idx + 1;
+            document.getElementById("client-title").innerText = m.name;
+            document.getElementById("client-desc").innerText = m.desc;
+            document.getElementById("m-budget").innerText = "$" + m.budget;
+            document.getElementById("m-target").innerText = m.targetPerf;
+            document.getElementById("limit-price").innerText = "$" + m.budget;
+        }
+
+        function tabCategory(cat) {
+            currentTab = cat;
+            document.querySelectorAll(".win-tab").forEach(t => t.classList.remove("active"));
+            if (event && event.target) event.target.classList.add("active");
+
+            const shelf = document.getElementById("parts-shelf");
+            shelf.innerHTML = "";
+
+            PARTS_DB[cat].forEach(p => {
+                const item = document.createElement("div");
+                item.className = "part-item-retro";
+                item.onclick = () => selectPart(cat, p);
+
+                let extra = "";
+                if (cat === "cpu") extra = `${p.socket} | ${p.tdp}W`;
+                if (cat === "motherboard") extra = `${p.socket} | ${p.ramType}`;
+                if (cat === "ram") extra = `${p.type} ${p.cap}GB`;
+                if (cat === "gpu") extra = `${p.power}W`;
+                if (cat === "storage") extra = `${p.cap}GB`;
+                if (cat === "psu") extra = `${p.wattage}W`;
+
+                item.innerHTML = `
+                    <div><b>${p.name}</b> <span style="font-size:12px; color:#555;">(${extra})</span></div>
+                    <div style="color:#b00; font-weight:bold;">$${p.price}</div>
+                `;
+                shelf.appendChild(item);
+            });
+        }
+
+        function selectPart(cat, p) {
+            build[cat] = p;
+            updateSlotView();
+            updateBudgetUI();
+        }
+
+        function removePart(cat) {
+            build[cat] = null;
+            updateSlotView();
+            updateBudgetUI();
+        }
+
+        function updateSlotView() {
+            const keys = ["cpu", "motherboard", "ram", "storage", "gpu", "psu"];
+            keys.forEach(k => {
+                const box = document.getElementById(`slot-${k}`);
+                const p = build[k];
+                if (p) {
+                    box.querySelector(".slot-val").innerText = p.name;
+                    box.querySelector(".slot-desc").innerText = `$${p.price} (點擊右上角 ✕ 移除)`;
+                    if (!box.querySelector(".btn-pixel-del")) {
+                        const del = document.createElement("button");
+                        del.className = "btn-pixel-del";
+                        del.innerText = "✕";
+                        del.onclick = (e) => { e.stopPropagation(); removePart(k); };
+                        box.appendChild(del);
+                    }
+                } else {
+                    box.querySelector(".slot-val").innerText = "未安裝";
+                    box.querySelector(".slot-desc").innerText = "點擊下方零件庫加入";
+                    const del = box.querySelector(".btn-pixel-del");
+                    if (del) del.remove();
+                }
+            });
+        }
+
+        function calculateStats() {
+            let cost = 0;
+            let watts = 50;
+            let perf = 0;
+            if (build.cpu) { cost += build.cpu.price; watts += build.cpu.tdp; perf += build.cpu.perf; }
+            if (build.motherboard) { cost += build.motherboard.price; }
+            if (build.ram) { cost += build.ram.price; perf += build.ram.perf; }
+            if (build.gpu) { cost += build.gpu.price; watts += build.gpu.power; perf += build.gpu.perf; }
+            if (build.storage) { cost += build.storage.price; perf += build.storage.perf; }
+            if (build.psu) { cost += build.psu.price; }
+            const psuW = build.psu ? build.psu.wattage : 0;
+            return { cost, watts, perf, psuW };
+        }
+
+        function updateBudgetUI() {
+            const { cost, watts, psuW } = calculateStats();
+            const curM = MISSIONS[currentStage];
+            const priceEl = document.getElementById("calc-price");
+            priceEl.innerText = `$${cost}`;
+            priceEl.style.color = cost > curM.budget ? "#c00" : "#000";
+
+            const powerEl = document.getElementById("calc-power");
+            powerEl.innerText = `${watts}W`;
+            powerEl.style.color = (psuW > 0 && watts > psuW) ? "#c00" : "#000";
+
+            document.getElementById("limit-psu").innerText = `${psuW}W`;
+        }
+
+        /* =========================================================================
+           4. POST 開機檢測與通關
+           ========================================================================= */
+        function triggerPOST() {
+            openModal("rank");
+            const term = document.getElementById("post-term");
+            const nextZone = document.getElementById("post-next-btn-zone");
+            nextZone.style.display = "none";
+            term.innerText = ">> Power-On Self-Test (POST) 檢測中...\n";
+
+            const { cost, watts, perf, psuW } = calculateStats();
+            const curM = MISSIONS[currentStage];
+            let errs = [];
+
+            if (!build.cpu) errs.push("[!] 缺少 CPU，無法啟動系統！");
+            if (!build.motherboard) errs.push("[!] 未安裝主機板！");
+            if (!build.ram) errs.push("[!] 缺少 RAM 記憶體，主板長鳴三聲！");
+            if (!build.storage) errs.push("[!] 未安裝 SSD 系統硬碟！");
+            if (!build.psu) errs.push("[!] 缺少火牛供電！");
+
+            if (build.cpu && build.motherboard && build.cpu.socket !== build.motherboard.socket) {
+                errs.push(`[!] 針腳衝突：CPU (${build.cpu.socket}) 與主機板 (${build.motherboard.socket}) 不吻合！`);
+            }
+            if (build.motherboard && build.ram && build.motherboard.ramType !== build.ram.type) {
+                errs.push(`[!] 記憶體不相容：主板僅支援 ${build.motherboard.ramType}，不可裝 ${build.ram.type}！`);
+            }
+            if (build.cpu && !build.cpu.igpu && (!build.gpu || build.gpu.isInternal)) {
+                errs.push("[!] 無畫面：此 CPU 無內顯且未安裝獨立顯卡！");
+            }
+            if (build.psu && watts > psuW) {
+                errs.push(`[!] 火牛供電跳掣：總耗電 (${watts}W) 超出供電極限 (${psuW}W)！`);
+            }
+
+            if (errs.length === 0) {
+                if (cost > curM.budget) errs.push(`[!] 預算超支：總計 $${cost} 超出客戶上限 ($${curM.budget})！`);
+                if (curM.needGpu && (!build.gpu || build.gpu.isInternal)) errs.push("[!] 客戶要求必須配備獨立顯示卡！");
+                if (perf < curM.targetPerf) errs.push(`[!] 效能未達標：跑分 (${perf}) 低於要求 (${curM.targetPerf})！`);
+            }
+
+            setTimeout(() => {
+                if (errs.length > 0) {
+                    term.innerText += "\n❌【開機自檢失敗 - POST FAILED】\n";
+                    errs.forEach(e => term.innerText += e + "\n");
+                    term.innerText += "\n請關閉此視窗並調整配件！";
+                } else {
+                    term.innerText += "\n✅【嗶！開機自檢成功 - POST PASSED】\n";
+                    term.innerText += `>> 系統跑分：${perf} 分！\n`;
+                    term.innerText += `>> 節省預算紅利：+$${curM.budget - cost}\n`;
+                    const earn = 100 + (curM.budget - cost) + perf;
+                    userScore += earn;
+                    term.innerText += `>> 獲得積分：+${earn} (總分: ${userScore})\n`;
+
+                    if (currentStage + 1 < MISSIONS.length) {
+                        nextZone.style.display = "block";
+                    } else {
+                        term.innerText += "\n🎉 恭喜！已完成所有客戶的組裝任務！成績已登錄！";
+                        saveScore();
+                    }
+                }
+                renderRankBoard();
+            }, 500);
+        }
+
+        function nextMission() {
+            closeModal("modal-rank");
+            loadMission(currentStage + 1);
+        }
+
+        function saveScore() {
+            if (isFirebaseOn && db) {
+                db.collection("pc_builder_retro_ranks").add({
+                    studentClass: studentClass,
+                    studentNo: studentNo,
+                    score: userScore,
+                    time: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } else {
+                let list = JSON.parse(localStorage.getItem("retro_pc_ranks") || "[]");
+                list.push({ studentClass, studentNo, score: userScore });
+                list.sort((a,b) => b.score - a.score);
+                localStorage.setItem("retro_pc_ranks", JSON.stringify(list.slice(0, 10)));
+            }
+        }
+
+        function renderRankBoard() {
+            const box = document.getElementById("board-entries");
+            let list = JSON.parse(localStorage.getItem("retro_pc_ranks") || "[]");
+            if (list.length === 0) {
+                list = [
+                    { studentClass: "1A", studentNo: "12", score: 850 },
+                    { studentClass: "2B", studentNo: "05", score: 780 },
+                    { studentClass: "1C", studentNo: "21", score: 690 }
+                ];
+            }
+            let html = "";
+            list.slice(0, 5).forEach((r, i) => {
+                html += `<div>#${i+1} [${r.studentClass} - ${r.studentNo}號] 得分: ${r.score}</div>`;
+            });
+            box.innerHTML = html;
+        }
+
+        /* =========================================================================
+           5. 模態對話框控制 (HOW, RECORD, RANK)
+           ========================================================================= */
+        function openModal(type) {
+            if (type === "how") document.getElementById("modal-how").style.display = "flex";
+            if (type === "rank") {
+                document.getElementById("modal-rank").style.display = "flex";
+                renderRankBoard();
+            }
+            if (type === "record") {
+                document.getElementById("rec-user").innerText = studentClass ? `${studentClass} (${studentNo})` : "尚未登入";
+                document.getElementById("rec-score").innerText = userScore;
+                document.getElementById("rec-stage").innerText = `${currentStage + 1} / ${MISSIONS.length}`;
+
+                let listStr = "";
+                const keys = ["cpu", "motherboard", "ram", "storage", "gpu", "psu"];
+                keys.forEach(k => {
+                    const p = build[k];
+                    listStr += `• ${k.toUpperCase()}: ${p ? p.name + " ($" + p.price + ")" : "未安裝"}<br>`;
+                });
+                document.getElementById("rec-list").innerHTML = listStr;
+                document.getElementById("modal-record").style.display = "flex";
+            }
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = "none";
+        }
+    </script>
+</body>
+</html>
